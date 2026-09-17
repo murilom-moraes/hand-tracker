@@ -1,60 +1,42 @@
 import cv2
 import mediapipe as mp
 import time
-import math
 
 
-def raised_fingertips(hand, width, height):
-    """Retorna os índices das pontas dos dedos que parecem estendidos."""
-    points = [(point.x * width, point.y * height) for point in hand]
-
-    def distance(a, b):
-        return math.dist(points[a], points[b])
-
-    def is_straight(a, joint, b):
-        ux = points[a][0] - points[joint][0]
-        uy = points[a][1] - points[joint][1]
-        vx = points[b][0] - points[joint][0]
-        vy = points[b][1] - points[joint][1]
-        length = math.hypot(ux, uy) * math.hypot(vx, vy)
-        return length > 0 and (ux * vx + uy * vy) / length < -0.85
-
-    tips = []
-    for base, joint, end_joint, tip in (
-        (5, 6, 7, 8),
-        (9, 10, 11, 12),
-        (13, 14, 15, 16),
-        (17, 18, 19, 20),
-    ):
-        if (is_straight(base, joint, end_joint)
-                and is_straight(joint, end_joint, tip)
-                and distance(0, tip) > distance(0, joint) * 1.1):
-            tips.append(tip)
-
-    if (is_straight(1, 2, 3) and is_straight(2, 3, 4)
-            and distance(4, 5) > distance(3, 5) * 1.2):
-        tips.append(4)
-    return tips
+GREEN = (0, 255, 0)
+FONT = cv2.FONT_HERSHEY_SIMPLEX
+FINGERTIPS = (4, 8, 12, 16, 20)
+PALM_POINTS = (5, 9, 13, 17)
 
 
-def label_position(hand, width, height, text):
-    tips = raised_fingertips(hand, width, height)
-    if len(tips) == 1:
-        anchor = hand[tips[0]]
-        center_x = anchor.x * width
-        top_y = anchor.y * height
-    else:
-        center_x = (min(p.x for p in hand) + max(p.x for p in hand)) * width / 2
-        top_y = min(p.y for p in hand) * height
+def draw_hand(frame, hand, category, connections):
+    height, width = frame.shape[:2]
+    points = [(int(p.x * width), int(p.y * height)) for p in hand]
 
-    (text_width, text_height), baseline = cv2.getTextSize(
-        text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2
+    for connection in connections:
+        cv2.line(
+            frame, points[connection.start], points[connection.end],
+            GREEN, 1, cv2.LINE_AA
+        )
+
+    for index, point in enumerate(points):
+        cv2.circle(frame, point, 5, GREEN, 0, cv2.LINE_AA)
+        if index in FINGERTIPS:
+            cv2.circle(frame, point, 10, GREEN, 1, cv2.LINE_AA)
+
+    knuckles_x = sum(hand[i].x for i in PALM_POINTS) / len(PALM_POINTS)
+    knuckles_y = sum(hand[i].y for i in PALM_POINTS) / len(PALM_POINTS)
+    center_x = int((hand[0].x + knuckles_x) * 0.5 * width)
+    center_y = int((hand[0].y + knuckles_y) * 0.5 * height)
+    label = "L" if category == "Left" else "R"
+    (text_width, text_height), _ = cv2.getTextSize(label, FONT, 0.6, 2)
+
+    cv2.circle(frame, (center_x, center_y), 16, GREEN, 1, cv2.LINE_AA)
+    cv2.putText(
+        frame, label,
+        (center_x - text_width // 2, center_y + text_height // 2),
+        FONT, 0.6, GREEN, 2, cv2.LINE_AA
     )
-    x = int(center_x - text_width / 2)
-    y = int(top_y - 20)
-    x = max(5, min(x, width - text_width - 5))
-    y = max(text_height + 5, min(y, height - baseline - 5))
-    return x, y
 
 
 options = mp.tasks.vision.HandLandmarkerOptions(
@@ -72,7 +54,7 @@ if not camera.isOpened():
 
 try:
     with mp.tasks.vision.HandLandmarker.create_from_options(options) as detector:
-
+        connections = mp.tasks.vision.HandLandmarksConnections.HAND_CONNECTIONS
         previous_time = time.perf_counter()
 
         while True:
@@ -82,7 +64,6 @@ try:
                 break
 
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
             image = mp.Image(
                 image_format=mp.ImageFormat.SRGB,
                 data=rgb
@@ -91,48 +72,9 @@ try:
             timestamp = int(time.monotonic() * 1000)
             result = detector.detect_for_video(image, timestamp)
 
-            height, width, _ = frame.shape
-
-            connections = mp.tasks.vision.HandLandmarksConnections.HAND_CONNECTIONS
-
             for hand_index, hand in enumerate(result.hand_landmarks):
-
-                handedness = result.handedness[hand_index][0]
-                hand_label = handedness.category_name
-
-                if hand_label == "Left":
-                    hand_label = "Esquerda"
-                else:
-                    hand_label = "Direita"
-
-                x, y = label_position(hand, width, height, hand_label)
-
-                cv2.putText(
-                    frame,
-                    hand_label,
-                    (x, y),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (255, 255, 255),
-                    2
-                )
-                for connection in connections:
-                    start = hand[connection.start]
-                    end = hand[connection.end]
-
-                    x1 = int(start.x * width)
-                    y1 = int(start.y * height)
-
-                    x2 = int(end.x * width)
-                    y2 = int(end.y * height)
-
-                    cv2.line(frame, (x1, y1), (x2, y2), (255, 255, 255), 2)
-
-                for landmark in hand:
-                    x = int(landmark.x * width)
-                    y = int(landmark.y * height)
-
-                    cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
+                category = result.handedness[hand_index][0].category_name
+                draw_hand(frame, hand, category, connections)
 
             current_time = time.perf_counter()
             fps = 1 / (current_time - previous_time)
@@ -140,12 +82,13 @@ try:
 
             cv2.putText(
                 frame,
-                f"FPS: {fps:.1f}",
-                (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
+                f"FPS: {int(fps)}",
+                (20, 40),
+                FONT,
                 0.8,
-                (0, 255, 0),
-                2
+                GREEN,
+                2,
+                cv2.LINE_AA
             )
 
             cv2.imshow("Hand Tracker", frame)
