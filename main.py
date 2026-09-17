@@ -44,7 +44,9 @@ options = mp.tasks.vision.HandLandmarkerOptions(
         model_asset_path="hand_landmarker.task"
     ),
     running_mode=mp.tasks.vision.RunningMode.VIDEO,
-    num_hands=1
+    num_hands=2,
+    min_hand_detection_confidence=0.7,
+    min_hand_presence_confidence=0.7
 )
 
 camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
