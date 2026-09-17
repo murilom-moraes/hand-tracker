@@ -1,41 +1,63 @@
 import cv2
 import mediapipe as mp
 import time
+import math
 
 
 GREEN = (0, 255, 0)
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 FINGERTIPS = (4, 8, 12, 16, 20)
 PALM_POINTS = (5, 9, 13, 17)
+REFERENCE_PALM_SIZE = 100
+MIN_HAND_SCALE = 0.35
+MAX_HAND_SCALE = 2.5
 
 
 def draw_hand(frame, hand, category, connections):
     height, width = frame.shape[:2]
     points = [(int(p.x * width), int(p.y * height)) for p in hand]
 
+    palm_width = math.hypot(
+        (hand[5].x - hand[17].x) * width,
+        (hand[5].y - hand[17].y) * height
+    )
+    palm_length = math.hypot(
+        (hand[0].x - hand[9].x) * width,
+        (hand[0].y - hand[9].y) * height
+    )
+    scale = max(MIN_HAND_SCALE, min(
+        max(palm_width, palm_length) / REFERENCE_PALM_SIZE, MAX_HAND_SCALE
+    ))
+    point_radius = max(1, round(5 * scale))
+    fingertip_radius = max(2, round(10 * scale))
+    palm_radius = max(5, round(16 * scale))
+    line_thickness = max(1, round(scale))
+    text_scale = 0.6 * scale
+    text_thickness = max(1, round(2 * scale))
+
     for connection in connections:
         cv2.line(
             frame, points[connection.start], points[connection.end],
-            GREEN, 1, cv2.LINE_AA
+            GREEN, line_thickness, cv2.LINE_AA
         )
 
     for index, point in enumerate(points):
-        cv2.circle(frame, point, 5, GREEN, 0, cv2.LINE_AA)
+        cv2.circle(frame, point, point_radius, GREEN, line_thickness, cv2.LINE_AA)
         if index in FINGERTIPS:
-            cv2.circle(frame, point, 10, GREEN, 1, cv2.LINE_AA)
+            cv2.circle(frame, point, fingertip_radius, GREEN, line_thickness, cv2.LINE_AA)
 
     knuckles_x = sum(hand[i].x for i in PALM_POINTS) / len(PALM_POINTS)
     knuckles_y = sum(hand[i].y for i in PALM_POINTS) / len(PALM_POINTS)
     center_x = int((hand[0].x + knuckles_x) * 0.5 * width)
     center_y = int((hand[0].y + knuckles_y) * 0.5 * height)
     label = "L" if category == "Left" else "R"
-    (text_width, text_height), _ = cv2.getTextSize(label, FONT, 0.6, 2)
+    (text_width, text_height), _ = cv2.getTextSize(label, FONT, text_scale, text_thickness)
 
-    cv2.circle(frame, (center_x, center_y), 16, GREEN, 1, cv2.LINE_AA)
+    cv2.circle(frame, (center_x, center_y), palm_radius, GREEN, line_thickness, cv2.LINE_AA)
     cv2.putText(
         frame, label,
         (center_x - text_width // 2, center_y + text_height // 2),
-        FONT, 0.6, GREEN, 2, cv2.LINE_AA
+        FONT, text_scale, GREEN, text_thickness, cv2.LINE_AA
     )
 
 
