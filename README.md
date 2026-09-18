@@ -9,7 +9,6 @@ O projeto utiliza a webcam para detectar uma mão, identificar suas 21 articula�
 - Detecção e rastreamento de mãos em tempo real.
 - Visualização dos 21 pontos da mão e suas conexões.
 - Identificação da mão esquerda e direita.
-- Posicionamento dinâmico do texto, acompanhando um dedo levantado.
 - Exibição de FPS em tempo real.
 
 ## Tecnologias
